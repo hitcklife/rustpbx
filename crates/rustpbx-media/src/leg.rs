@@ -64,6 +64,15 @@ pub struct LegConfig {
     pub comfort_noise: bool,
     /// Comfort-noise level in dBFS. Ignored when `comfort_noise` is false.
     pub comfort_noise_level_db: f32,
+    /// Learn the peer's real RTP source address from its first packets
+    /// (symmetric-RTP / NAT latching) instead of trusting the SDP `c=` line.
+    /// Required for SIP phones behind NAT that advertise a private address.
+    /// Mirrors `RtcConfiguration::enable_latching`.
+    pub enable_latching: bool,
+    /// Probation window (packets) before the latch commits; `None` = latch on
+    /// the first SSRC-matching packet. Mirrors
+    /// `RtcConfiguration::probation_max_packets`.
+    pub probation_max_packets: Option<u8>,
 }
 
 impl LegConfig {
@@ -85,6 +94,8 @@ impl LegConfig {
             cname: None,
             comfort_noise: true,
             comfort_noise_level_db: -35.0,
+            enable_latching: true,
+            probation_max_packets: None,
         }
     }
 }
@@ -1129,6 +1140,13 @@ fn build_rtc_config(cfg: &LegConfig) -> RtcConfiguration {
         // reached, so restore the default to cut per-leg reserved memory.
         rtp_buffer_capacity: 100,
         runtime_handle: tokio::runtime::Handle::try_current().ok(),
+        // NAT latching was silently disabled for every session-built leg:
+        // `RtcConfiguration::default()` has `enable_latching: false`, so the
+        // `[proxy] enable_latching` setting never reached the transport and
+        // RTP to NATed SIP phones went to their private SDP address
+        // (one-way audio). Plumb both knobs through, like RtpTrackBuilder.
+        enable_latching: cfg.enable_latching,
+        probation_max_packets: cfg.probation_max_packets,
         media_capabilities: Some(rustrtc::config::MediaCapabilities {
             audio: cfg.codecs.iter().map(audio_capability_from_codec).collect(),
             video: cfg.video_codecs.clone(),
@@ -1476,6 +1494,8 @@ mod tests {
             cname: Some("webrtc-test".to_string()),
             comfort_noise: true,
             comfort_noise_level_db: -35.0,
+            enable_latching: true,
+            probation_max_packets: None,
         };
         let a = LegInner::new("a", &cfg, None).expect("webrtc leg");
         let offer = a.create_offer().await.expect("create_offer");
@@ -1553,6 +1573,8 @@ mod tests {
             cname: Some("video-test".to_string()),
             comfort_noise: true,
             comfort_noise_level_db: -35.0,
+            enable_latching: true,
+            probation_max_packets: None,
         };
         let leg = LegInner::new("video", &cfg, None).expect("video leg");
         let offer = leg.create_offer().await.expect("create_offer");
@@ -1607,6 +1629,8 @@ mod tests {
             cname: Some("video-answer".to_string()),
             comfort_noise: true,
             comfort_noise_level_db: -35.0,
+            enable_latching: true,
+            probation_max_packets: None,
         };
         let leg = LegInner::new("answerer", &cfg, None).expect("answerer leg");
 
@@ -1712,6 +1736,8 @@ mod tests {
             cname: Some("dtmf-remote-pt".to_string()),
             comfort_noise: true,
             comfort_noise_level_db: -35.0,
+            enable_latching: true,
+            probation_max_packets: None,
         };
 
         let leg = LegInner::new("caller-dtmf", &cfg, None).expect("leg");
@@ -1816,6 +1842,8 @@ mod p24_uac_test {
             cname: Some("repro".to_string()),
             comfort_noise: false,
             comfort_noise_level_db: -35.0,
+            enable_latching: true,
+            probation_max_packets: None,
         };
         let leg = LegInner::new("plain-rtp-av", &cfg, None).expect("leg");
         let offer = leg.create_offer().await.expect("offer");

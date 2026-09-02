@@ -430,6 +430,8 @@ impl SipSession {
             cname: Some(self.server.rtc_cname.clone()),
             comfort_noise: self.context.dialplan.media.comfort_noise,
             comfort_noise_level_db: self.context.dialplan.media.comfort_noise_level_db,
+            enable_latching: self.context.dialplan.media.enable_latching,
+            probation_max_packets: self.context.dialplan.media.probation_max_packets,
         }
     }
 
