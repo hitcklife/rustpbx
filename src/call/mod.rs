@@ -1181,6 +1181,19 @@ impl Dialplan {
                         | "user-agent"
                         | "allow"
                         | "supported"
+                        // Identity and privacy assertions belong to the leg
+                        // that made them. A phone's P-Preferred-Identity
+                        // (e.g. <sip:702@pbx>) forwarded to a carrier trunk
+                        // overrides the From caller ID and gets the call
+                        // rejected (Telnyx: 403 CALL_REJECTED). The PBX
+                        // asserts identity itself via From / route rewrites.
+                        | "p-preferred-identity"
+                        | "p-asserted-identity"
+                        | "privacy"
+                        // Access-network / emergency info carry the device
+                        // MAC address; never leak them beyond the PBX.
+                        | "p-access-network-info"
+                        | "p-emergency-info"
                 )
             }
             _ => true,
@@ -1560,6 +1573,23 @@ mod tests {
             DialDirection::Internal,
         );
         assert!(dp.header_passthrough.is_none());
+    }
+
+    #[test]
+    fn should_forward_header_excludes_identity_and_network_info() {
+        for name in [
+            "P-Preferred-Identity",
+            "p-asserted-identity",
+            "Privacy",
+            "P-Access-Network-Info",
+            "P-Emergency-Info",
+        ] {
+            assert!(
+                !Dialplan::should_forward_header(&custom_header(name, "v")),
+                "{name} must never be forwarded to another leg"
+            );
+        }
+        assert!(Dialplan::should_forward_header(&custom_header("X-Grandstream-PBX", "true")));
     }
 
     #[test]
